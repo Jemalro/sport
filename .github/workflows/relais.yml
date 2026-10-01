@@ -6,34 +6,44 @@ on:
 jobs:
   relais:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Récupérer et transmettre les données ESPN
         env:
           SITE_URL: ${{ secrets.SITE_URL }}
           RELAIS_CLE: ${{ secrets.RELAIS_CLE }}
         run: |
-          code=$(curl -sS -o urls.txt -w "%{http_code}" \
-            -H "X-Relais-Cle: $RELAIS_CLE" "$SITE_URL/relais/a_faire.php")
-          if [ "$code" != "200" ]; then
-            echo "Mon site a répondu HTTP $code :"
-            head -c 500 urls.txt; echo
-            exit 1
-          fi
-          echo "$(grep -c . urls.txt) URL à traiter"
-
-          while read -r url; do
-            [ -z "$url" ] && continue
-            code=$(curl -sS -o reponse.json -w "%{http_code}" "$url")
-            if [ "$code" = "200" ]; then
-              resultat=$(curl -sS -X POST \
-                -H "X-Relais-Cle: $RELAIS_CLE" \
-                -H "X-Relais-Url: $url" \
-                -H "Content-Type: application/json" \
-                --data-binary @reponse.json \
-                "$SITE_URL/relais/recevoir.php")
-              echo "$url -> $resultat"
-            else
-              echo "$url -> ÉCHEC ESPN (HTTP $code)"
+          relayer() {
+            code=$(curl -sS -o urls.txt -w "%{http_code}" \
+              -H "X-Relais-Cle: $RELAIS_CLE" "$SITE_URL/relais/a_faire.php?etape=$1")
+            if [ "$code" != "200" ]; then
+              echo "Étape $1 : mon site a répondu HTTP $code :"
+              head -c 500 urls.txt; echo
+              exit 1
             fi
-            sleep 1
-          done < urls.txt
+            echo "### Étape $1 : $(grep -c . urls.txt) URL à traiter"
+
+            while read -r url; do
+              [ -z "$url" ] && continue
+              for essai in 1 2 3; do
+                code=$(curl -sS -o reponse.json -w "%{http_code}" "$url")
+                case "$code" in 200|400|404) break ;; esac
+                sleep 5
+              done
+              if [ "$code" = "200" ]; then
+                resultat=$(curl -sS -X POST \
+                  -H "X-Relais-Cle: $RELAIS_CLE" \
+                  -H "X-Relais-Url: $url" \
+                  -H "Content-Type: application/json" \
+                  --data-binary @reponse.json \
+                  "$SITE_URL/relais/recevoir.php")
+                echo "$url -> $resultat"
+              else
+                echo "$url -> ÉCHEC ESPN (HTTP $code)"
+              fi
+              sleep 1
+            done < urls.txt
+          }
+
+          relayer 1
+          relayer 2
