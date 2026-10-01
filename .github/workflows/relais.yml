@@ -1,0 +1,32 @@
+name: Relais ESPN
+
+on:
+  workflow_dispatch:
+
+jobs:
+  relais:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer et transmettre les données ESPN
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          RELAIS_CLE: ${{ secrets.RELAIS_CLE }}
+        run: |
+          curl -fsS -H "X-Relais-Cle: $RELAIS_CLE" "$SITE_URL/relais/a_faire.php" > urls.txt
+          echo "$(grep -c . urls.txt) URL à traiter"
+
+          while read -r url; do
+            [ -z "$url" ] && continue
+            if curl -fsS --compressed -A "Mozilla/5.0" -o reponse.json "$url"; then
+              resultat=$(curl -sS -X POST \
+                -H "X-Relais-Cle: $RELAIS_CLE" \
+                -H "X-Relais-Url: $url" \
+                -H "Content-Type: application/json" \
+                --data-binary @reponse.json \
+                "$SITE_URL/relais/recevoir.php")
+              echo "$url -> $resultat"
+            else
+              echo "$url -> ÉCHEC du téléchargement ESPN"
+            fi
+            sleep 1
+          done < urls.txt
