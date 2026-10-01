@@ -1,0 +1,15 @@
+name: Test ESPN
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tester les endpoints ESPN
+        run: |
+          for l in football/nfl basketball/nba soccer/fra.1 soccer/fra.2 soccer/fra.3 soccer/eng.1 soccer/uefa.champions; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://site.api.espn.com/apis/site/v2/sports/$l/teams")
+            echo "$l -> HTTP $code"
+          done
