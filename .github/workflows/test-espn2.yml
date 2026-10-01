@@ -1,0 +1,33 @@
+name: Test ESPN 2
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tester les méthodes de calendrier
+        run: |
+          B="https://site.api.espn.com/apis/site/v2/sports"
+          EV='"\(.events | length) événements", (.events[]? | "  \(.date)  \(.name)")'
+          CAL='"calendrier : \(.leagues[0].calendar | length) entrées", (.leagues[0].calendar[0:5][]? | if type == "object" then "  \(.label // .startDate)" else "  \(.)" end)'
+
+          tester() {
+            code=$(curl -sS -o r.json -w "%{http_code}" "$2")
+            echo "=== $1 -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              jq -r "$3" r.json 2>&1 | head -n 40
+            fi
+            echo
+            sleep 1
+          }
+
+          tester "1. NFL un seul jour"          "$B/football/nfl/scoreboard?dates=20261004"     "$EV"
+          tester "1. Premier League un jour"    "$B/soccer/eng.1/scoreboard?dates=20261010"     "$EV"
+          tester "2. 49ers saison"              "$B/football/nfl/teams/25/schedule"             "$EV"
+          tester "2. Warriors saison"           "$B/basketball/nba/teams/9/schedule"            "$EV"
+          tester "2. Tottenham (défaut)"        "$B/soccer/eng.1/teams/367/schedule"            "$EV"
+          tester "2. Tottenham (à venir)"       "$B/soccer/eng.1/teams/367/schedule?fixture=true" "$EV"
+          tester "3. NFL calendrier"            "$B/football/nfl/scoreboard"                    "$CAL"
+          tester "3. Premier League calendrier" "$B/soccer/eng.1/scoreboard"                    "$CAL"
