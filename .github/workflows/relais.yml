@@ -17,7 +17,8 @@ jobs:
 
           while read -r url; do
             [ -z "$url" ] && continue
-            if curl -fsS --compressed -A "Mozilla/5.0" -o reponse.json "$url"; then
+            code=$(curl -sS -o reponse.json -w "%{http_code}" "$url")
+            if [ "$code" = "200" ]; then
               resultat=$(curl -sS -X POST \
                 -H "X-Relais-Cle: $RELAIS_CLE" \
                 -H "X-Relais-Url: $url" \
@@ -26,7 +27,7 @@ jobs:
                 "$SITE_URL/relais/recevoir.php")
               echo "$url -> $resultat"
             else
-              echo "$url -> ÉCHEC du téléchargement ESPN"
+              echo "$url -> ÉCHEC ESPN (HTTP $code)"
             fi
             sleep 1
           done < urls.txt
