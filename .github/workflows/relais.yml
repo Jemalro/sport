@@ -34,17 +34,28 @@ jobs:
         run: |
           echo "Mode : $MODE"
 
+          # Une réponse vide ou en HTML (« <… ») = blocage passager de l'hébergeur : on réessaie
+          bloque() { case "$1" in ""|"<"*) return 0 ;; *) return 1 ;; esac; }
+
           importer() {
-            curl -sS -m 300 -H "X-Relais-Cle: $RELAIS_CLE" \
-              "$SITE_URL/relais/importer.php?source=$1&mode=$2" || echo "ÉCHEC de l'appel pour $1"
+            for essai in 1 2 3; do
+              resultat=$(curl -sS -m 300 -H "X-Relais-Cle: $RELAIS_CLE" \
+                "$SITE_URL/relais/importer.php?source=$1&mode=$2" || true)
+              bloque "$resultat" || break
+              sleep 10
+            done
+            if bloque "$resultat"; then echo "ÉCHEC import $1 (site injoignable)"; else echo "$resultat"; fi
           }
 
           relayer() {
-            code=$(curl -sS -o urls.txt -w "%{http_code}" \
-              -H "X-Relais-Cle: $RELAIS_CLE" "$SITE_URL/relais/a_faire.php?etape=$1" || true)
+            for essai in 1 2 3; do
+              code=$(curl -sS -o urls.txt -w "%{http_code}" \
+                -H "X-Relais-Cle: $RELAIS_CLE" "$SITE_URL/relais/a_faire.php?etape=$1" || true)
+              [ "$code" = "200" ] && break
+              sleep 10
+            done
             if [ "$code" != "200" ]; then
               echo "Étape $1 : mon site a répondu HTTP $code"
-              head -c 500 urls.txt 2>/dev/null; echo
               return 1
             fi
             echo "### Étape $1 : $(grep -c . urls.txt || true) URL à traiter"
@@ -56,16 +67,25 @@ jobs:
                 case "$code" in 200|400|404) break ;; esac
                 sleep 5
               done
-              if [ "$code" = "200" ]; then
+              if [ "$code" != "200" ]; then
+                echo "$url -> ÉCHEC ESPN (HTTP $code)"
+                sleep 1
+                continue
+              fi
+              for essai in 1 2 3; do
                 resultat=$(curl -sS -X POST \
                   -H "X-Relais-Cle: $RELAIS_CLE" \
                   -H "X-Relais-Url: $url" \
                   -H "Content-Type: application/json" \
                   --data-binary @reponse.json \
-                  "$SITE_URL/relais/recevoir.php" || echo "ÉCHEC de l'envoi au site")
-                echo "$url -> $resultat"
+                  "$SITE_URL/relais/recevoir.php" || true)
+                bloque "$resultat" || break
+                sleep 5
+              done
+              if bloque "$resultat"; then
+                echo "$url -> ÉCHEC envoi au site (bloqué 3 fois)"
               else
-                echo "$url -> ÉCHEC ESPN (HTTP $code)"
+                echo "$url -> $resultat"
               fi
               sleep 1
             done < urls.txt
