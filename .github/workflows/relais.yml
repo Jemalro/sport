@@ -2,6 +2,14 @@ name: Relais ESPN
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Que faut-il relayer ?"
+        type: choice
+        options:
+          - complet
+          - equipes
+        default: complet
 
 jobs:
   relais:
@@ -12,6 +20,7 @@ jobs:
         env:
           SITE_URL: ${{ secrets.SITE_URL }}
           RELAIS_CLE: ${{ secrets.RELAIS_CLE }}
+          MODE: ${{ inputs.mode || 'complet' }}
         run: |
           relayer() {
             code=$(curl -sS -o urls.txt -w "%{http_code}" \
@@ -45,5 +54,9 @@ jobs:
             done < urls.txt
           }
 
-          relayer 1
-          relayer 2
+          if [ "$MODE" = "equipes" ]; then
+            relayer equipes
+          else
+            relayer 1
+            relayer 2
+          fi
